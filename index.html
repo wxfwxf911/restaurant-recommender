@@ -6,8 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>餐厅推荐</title>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leancloud-storage@3.15.0/dist/av-live-query-min.js"></script>
 <style>
 :root {
   --bg:#F2F2F7;
@@ -210,11 +209,11 @@ const CUISINE_KEY = 'cuisine_list';
 const DEFAULT_CUISINES = ['中餐','火锅','日料','西餐'];
 const CUISINE_EMOJI = {中餐:'🥢',火锅:'🍲',日料:'🍣',西餐:'🍝'};
 function loadCuisines(){try{const d=localStorage.getItem(CUISINE_KEY);return d?JSON.parse(d):null}catch(e){return null}}
-function saveCuisines(data){localStorage.setItem(CUISINE_KEY,JSON.stringify(data));fbSet('/cuisines',data)}
+function saveCuisines(data){localStorage.setItem(CUISINE_KEY,JSON.stringify(data));lcSet('cuisines',data)}
 function getCuisines(){let c=loadCuisines();if(!c){c=[...DEFAULT_CUISINES];saveCuisines(c)}return c}
 const APP_URL_KEY='app_share_url';
 function getAppUrl(){return localStorage.getItem(APP_URL_KEY)||''}
-function setAppUrl(url){localStorage.setItem(APP_URL_KEY,url);fbSet('/appUrl',url)}
+function setAppUrl(url){localStorage.setItem(APP_URL_KEY,url);lcSet('appUrl',url)}
 
 const DEFAULT_RESTAURANTS = [
   {id:'r1',name:'鼎泰丰',cuisine:'中餐',budget:'50-100',party:['1-2','3-5'],reason:'小笼包界的天花板，米其林一星品质，服务细致到帮客人剥虾壳，商务宴请和约会从未失手。',mustTry:'蟹粉小笼包、虾仁蛋炒饭、原盅鸡汤',avgPrice:80,rating:4.7,phone:'021-63865778',address:'上海市黄浦区淮海中路999号环贸广场L4',lat:31.218,lng:121.467,images:[]},
@@ -236,32 +235,51 @@ const DEFAULT_RESTAURANTS = [
 ];
 
 function loadDB(){try{const d=localStorage.getItem(DB_KEY);return d?JSON.parse(d):null}catch(e){return null}}
-// ── Firebase Sync ────────────────────────────
-const FB_CONFIG_KEY='firebase_config';
-let _fbApp=null;
-function getFbConfig(){try{return JSON.parse(localStorage.getItem(FB_CONFIG_KEY))||null}catch(e){return null}}
-function fbInit(){
-  if(_fbApp)return _fbApp;
-  const cfg=getFbConfig();
-  if(!cfg||!cfg.databaseURL||typeof firebase==='undefined')return null;
-  try{_fbApp=firebase.initializeApp(cfg,'restaurant-app');return _fbApp}catch(e){return null}
+// ── LeanCloud Sync ────────────────────────────
+const LC_CONFIG_KEY='leancloud_config';
+let _lcLiveQuery=null;
+function getLcConfig(){try{return JSON.parse(localStorage.getItem(LC_CONFIG_KEY))||null}catch(e){return null}}
+function lcInit(){
+  if(window._lcInited)return true;
+  const cfg=getLcConfig();
+  if(!cfg||!cfg.appId||!cfg.appKey||typeof AV==='undefined')return false;
+  try{
+    AV.init({appId:cfg.appId,appKey:cfg.appKey,serverURL:cfg.serverURL||('https://'+cfg.appId+'.lc-cn-n1-shared.com')});
+    window._lcInited=true;return true;
+  }catch(e){return false}
 }
-function fbSet(path,data){
-  const app=fbInit();if(!app)return;
-  firebase.database(app).ref(path).set(JSON.parse(JSON.stringify(data))).catch(()=>{});
+function lcSet(key,value){
+  if(!lcInit())return;
+  const SyncData=AV.Object.extend('SyncData');
+  new AV.Query('SyncData').equalTo('key',key).first().then(obj=>{
+    const clean=JSON.parse(JSON.stringify(value));
+    if(obj){obj.set('value',clean);return obj.save()}
+    else{return new SyncData({key:key,value:clean}).save()}
+  }).catch(()=>{});
 }
-function fbListen(){
-  const app=fbInit();if(!app)return;
-  firebase.database(app).ref('/restaurants').on('value',snap=>{if(snap.val()){localStorage.setItem(DB_KEY,JSON.stringify(snap.val()));if(currentView!=='recommend'||step===0)render()}});
-  firebase.database(app).ref('/orders').on('value',snap=>{if(snap.val())localStorage.setItem(ORDERS_KEY,JSON.stringify(snap.val()))});
-  firebase.database(app).ref('/cuisines').on('value',snap=>{if(snap.val())localStorage.setItem(CUISINE_KEY,JSON.stringify(snap.val()))});
-  firebase.database(app).ref('/appUrl').on('value',snap=>{if(snap.val()!=null)localStorage.setItem(APP_URL_KEY,snap.val())});
+function applySync(key,value){
+  if(!value)return;
+  switch(key){
+    case'restaurants':localStorage.setItem(DB_KEY,JSON.stringify(value));if(currentView!=='recommend'||step===0)render();break;
+    case'orders':localStorage.setItem(ORDERS_KEY,JSON.stringify(value));break;
+    case'cuisines':localStorage.setItem(CUISINE_KEY,JSON.stringify(value));break;
+    case'appUrl':if(value!=null)localStorage.setItem(APP_URL_KEY,value);break;
+  }
+}
+function lcListen(){
+  if(!lcInit())return;
+  if(_lcLiveQuery){_lcLiveQuery.unsubscribe().catch(()=>{});_lcLiveQuery=null}
+  new AV.Query('SyncData').subscribe().then(lq=>{
+    _lcLiveQuery=lq;
+    lq.on('create',obj=>{const k=obj.get('key'),v=obj.get('value');if(k&&v!=null)applySync(k,v)});
+    lq.on('update',(obj,keys)=>{if(keys&&keys.includes('value')){const k=obj.get('key'),v=obj.get('value');if(k&&v!=null)applySync(k,v)}});
+  }).catch(()=>{});
 }
 
-function saveDB(data){localStorage.setItem(DB_KEY,JSON.stringify(data));fbSet('/restaurants',data)}
+function saveDB(data){localStorage.setItem(DB_KEY,JSON.stringify(data));lcSet('restaurants',data)}
 function getDB(){let db=loadDB();if(!db){db=JSON.parse(JSON.stringify(DEFAULT_RESTAURANTS));saveDB(db)}return db}
 function loadOrders(){try{const d=localStorage.getItem(ORDERS_KEY);return d?JSON.parse(d):{}}catch(e){return{}}}
-function saveOrders(data){localStorage.setItem(ORDERS_KEY,JSON.stringify(data));fbSet('/orders',data)}
+function saveOrders(data){localStorage.setItem(ORDERS_KEY,JSON.stringify(data));lcSet('orders',data)}
 function getOrders(){return loadOrders()}
 
 // ── Geolocation ──────────────────────────────
@@ -373,41 +391,39 @@ function render(){
 }
 
 function renderFab(){
-  const fbCfg=getFbConfig();
-  const connected=!!(fbCfg&&fbCfg.databaseURL&&_fbApp);
-  let h=`<button class="fab-sync${connected?' connected':''}" data-action="open-sync" title="${connected?'已连接 Firebase':'未配置同步'}">
-    🔥<span class="fab-dot"></span>
+  const lcCfg=getLcConfig();
+  const connected=!!(lcCfg&&lcCfg.appId&&window._lcInited);
+  let h=`<button class="fab-sync${connected?' connected':''}" data-action="open-sync" title="${connected?'已连接 LeanCloud':'未配置同步'}">
+    ☁️<span class="fab-dot"></span>
   </button>`;
   h+=`<div class="sync-overlay" id="sync-overlay">
     <div class="sync-panel">
       <button class="btn-close" data-action="close-sync">&times;</button>
       <h2>☁️ 多端实时同步</h2>
-      <p style="font-size:13px;color:var(--sub);margin-bottom:12px">${connected?'<span style="color:var(--green)">✅ 已连接</span> — 手机和电脑数据实时同步中':'配置 Firebase 后，手机和电脑数据实时同步'}</p>
-      <div class="step"><div class="step-num">1</div><div><p style="font-weight:600">填写 Firebase 配置</p></div></div>
-      <label style="display:block;font-size:13px;font-weight:600;color:var(--sub);margin:8px 0 4px">Database URL</label>
-      <input id="sf_fb_url" value="${fbCfg&&fbCfg.databaseURL?fbCfg.databaseURL:''}" placeholder="https://your-project.firebaseio.com" style="width:100%;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit">
-      <label style="display:block;font-size:13px;font-weight:600;color:var(--sub);margin:8px 0 4px">API Key</label>
-      <input id="sf_fb_key" value="${fbCfg&&fbCfg.apiKey?fbCfg.apiKey:''}" placeholder="AIzaSy..." style="width:100%;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit">
-      <button class="btn-submit" data-action="save-fb-config" style="margin-top:12px">${connected?'重新连接':'保存并连接'}</button>
-      ${connected?`<button class="btn-share" data-action="disconnect-fb" style="margin-top:8px;color:var(--red);border-color:var(--red)">断开同步</button>`:''}
-      <div class="step" style="margin-top:20px"><div class="step-num">2</div><div><p style="font-weight:600">获取配置（点击展开）</p></div></div>
+      <p style="font-size:13px;color:var(--sub);margin-bottom:12px">${connected?'<span style="color:var(--green)">✅ 已连接</span> — 手机和电脑数据实时同步中':'配置 LeanCloud 后，手机和电脑数据实时同步'}</p>
+      <div class="step"><div class="step-num">1</div><div><p style="font-weight:600">填写 LeanCloud 配置</p></div></div>
+      <label style="display:block;font-size:13px;font-weight:600;color:var(--sub);margin:8px 0 4px">App ID</label>
+      <input id="sf_lc_appid" value="${lcCfg&&lcCfg.appId?lcCfg.appId:''}" placeholder="输入 App ID" style="width:100%;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit">
+      <label style="display:block;font-size:13px;font-weight:600;color:var(--sub);margin:8px 0 4px">App Key</label>
+      <input id="sf_lc_appkey" value="${lcCfg&&lcCfg.appKey?lcCfg.appKey:''}" placeholder="输入 App Key" style="width:100%;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit">
+      <label style="display:block;font-size:13px;font-weight:600;color:var(--sub);margin:8px 0 4px">Server URL（可选，默认自动拼接）</label>
+      <input id="sf_lc_server" value="${lcCfg&&lcCfg.serverURL?lcCfg.serverURL:''}" placeholder="https://yourapp.lc-cn-n1-shared.com" style="width:100%;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit">
+      <button class="btn-submit" data-action="save-lc-config" style="margin-top:12px">${connected?'重新连接':'保存并连接'}</button>
+      ${connected?`<button class="btn-share" data-action="disconnect-lc" style="margin-top:8px;color:var(--red);border-color:var(--red)">断开同步</button>`:''}
+      <div class="step" style="margin-top:20px"><div class="step-num">2</div><div><p style="font-weight:600">获取 LeanCloud 配置（点击展开）</p></div></div>
       <details style="font-size:12px;color:var(--sub);line-height:1.7;margin-left:34px">
-        <summary style="cursor:pointer;font-weight:600;color:var(--accent)">如何获取 Database URL 和 API Key？</summary>
-        <p style="margin-top:6px">打开 <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a>，创建或选择一个项目</p>
-        <p>左侧菜单 → <b>Realtime Database</b> → 创建数据库 → 位置选美国 → <b>以测试模式启动</b></p>
-        <p>左上角 ⚙️ 项目设置 → 添加应用 → <b>Web</b> → 复制 <b>databaseURL</b> 和 <b>apiKey</b></p>
+        <summary style="cursor:pointer;font-weight:600;color:var(--accent)">如何获取 App ID 和 App Key？</summary>
+        <p style="margin-top:6px">打开 <a href="https://console.leancloud.cn" target="_blank">console.leancloud.cn</a>，注册并登录</p>
+        <p>创建应用 → 选择<b>开发版</b>（免费）→ 进入应用</p>
+        <p>左侧 <b>设置 → 应用凭证</b> → 复制 <b>App ID</b> 和 <b>App Key</b></p>
+        <p style="margin-top:4px;color:var(--orange)">⚠️ 注意：使用的是国内版 console.leancloud.cn</p>
       </details>
-      <div class="step" style="margin-top:16px"><div class="step-num">3</div><div><p style="font-weight:600">安全规则（可选，建议设置）</p></div></div>
+      <div class="step" style="margin-top:16px"><div class="step-num">3</div><div><p style="font-weight:600">创建数据表</p></div></div>
       <details style="font-size:12px;color:var(--sub);line-height:1.7;margin-left:34px">
-        <summary style="cursor:pointer;font-weight:600;color:var(--accent)">复制以下规则到 Firebase Console</summary>
-        <p style="margin-top:6px">Firebase Console → Realtime Database → 规则 → 粘贴 → 发布</p>
-        <code>{
-  "rules": {
-    ".read": true,
-    ".write": true
-  }
-}</code>
-        <p style="margin-top:4px;color:var(--orange)">⚠️ 此规则允许所有人读写，仅适合小范围使用。正式上线前建议加上验证。</p>
+        <summary style="cursor:pointer;font-weight:600;color:var(--accent)">首次使用需要在控制台创建</summary>
+        <p style="margin-top:6px">LeanCloud 控制台 → 存储 → 结构化数据 → 创建 Class</p>
+        <p>Class 名称填 <b style="color:var(--accent)">SyncData</b>，权限选<b>无限制</b></p>
+        <p>创建后即可使用实时同步功能</p>
       </details>
     </div>
   </div>`;
@@ -741,7 +757,7 @@ function bindEvents(){
   });
   // Reset
   const resetBtn=document.querySelector('[data-action="reset-db"]');
-  if(resetBtn){resetBtn.addEventListener('click',()=>{if(confirm('确定恢复为默认餐厅数据库和菜系列表吗？自定义数据将丢失。')){localStorage.removeItem(DB_KEY);localStorage.removeItem(CUISINE_KEY);localStorage.removeItem(APP_URL_KEY);localStorage.removeItem(FB_CONFIG_KEY);_fbApp=null;editId=null;showToast('已恢复默认数据库和菜系');render()}})}
+  if(resetBtn){resetBtn.addEventListener('click',()=>{if(confirm('确定恢复为默认餐厅数据库和菜系列表吗？自定义数据将丢失。')){localStorage.removeItem(DB_KEY);localStorage.removeItem(CUISINE_KEY);localStorage.removeItem(APP_URL_KEY);localStorage.removeItem(LC_CONFIG_KEY);window._lcInited=false;_lcLiveQuery=null;editId=null;showToast('已恢复默认数据库和菜系');render()}})}
   // Save app URL
   const saveUrlBtn=document.querySelector('[data-action="save-app-url"]');
   if(saveUrlBtn){saveUrlBtn.addEventListener('click',()=>{
@@ -756,26 +772,30 @@ function bindEvents(){
   const closeSyncBtn=document.querySelector('[data-action="close-sync"]');
   if(closeSyncBtn)closeSyncBtn.addEventListener('click',()=>{document.getElementById('sync-overlay').classList.remove('show')});
   document.addEventListener('click',e=>{if(e.target.id==='sync-overlay')e.target.classList.remove('show')});
-  // Save Firebase config
-  const saveFbBtn=document.querySelector('[data-action="save-fb-config"]');
-  if(saveFbBtn){saveFbBtn.addEventListener('click',()=>{
-    const url=document.getElementById('sf_fb_url').value.trim();
-    const key=document.getElementById('sf_fb_key').value.trim();
-    if(!url||!key){showToast('请填写 Database URL 和 API Key');return}
-    const cfg={databaseURL:url,apiKey:key};
-    localStorage.setItem(FB_CONFIG_KEY,JSON.stringify(cfg));
-    _fbApp=null;
-    fbListen();
+  // Save LeanCloud config
+  const saveLcBtn=document.querySelector('[data-action="save-lc-config"]');
+  if(saveLcBtn){saveLcBtn.addEventListener('click',()=>{
+    const appId=document.getElementById('sf_lc_appid').value.trim();
+    const appKey=document.getElementById('sf_lc_appkey').value.trim();
+    const serverURL=document.getElementById('sf_lc_server').value.trim();
+    if(!appId||!appKey){showToast('请填写 App ID 和 App Key');return}
+    const cfg={appId:appId,appKey:appKey};
+    if(serverURL)cfg.serverURL=serverURL;
+    localStorage.setItem(LC_CONFIG_KEY,JSON.stringify(cfg));
+    window._lcInited=false;
+    if(_lcLiveQuery){_lcLiveQuery.unsubscribe().catch(()=>{});_lcLiveQuery=null}
+    lcListen();
     document.getElementById('sync-overlay').classList.remove('show');
-    showToast('Firebase 已连接，多端实时同步中');
+    showToast('LeanCloud 已连接，多端实时同步中');
     render();
   })}
-  // Disconnect Firebase
-  const disFbBtn=document.querySelector('[data-action="disconnect-fb"]');
-  if(disFbBtn){disFbBtn.addEventListener('click',()=>{
-    if(!confirm('确定断开 Firebase 同步？数据将保留在本地。'))return;
-    localStorage.removeItem(FB_CONFIG_KEY);
-    _fbApp=null;
+  // Disconnect LeanCloud
+  const disLcBtn=document.querySelector('[data-action="disconnect-lc"]');
+  if(disLcBtn){disLcBtn.addEventListener('click',()=>{
+    if(!confirm('确定断开 LeanCloud 同步？数据将保留在本地。'))return;
+    localStorage.removeItem(LC_CONFIG_KEY);
+    window._lcInited=false;
+    if(_lcLiveQuery){_lcLiveQuery.unsubscribe().catch(()=>{});_lcLiveQuery=null}
     document.getElementById('sync-overlay').classList.remove('show');
     showToast('已断开同步，使用本地存储');
     render();
@@ -917,7 +937,7 @@ async function doRecommend(){
 }
 
 // ── Init ─────────────────────────────────────
-fbListen();
+lcListen();
 render();
 </script>
 </body>
