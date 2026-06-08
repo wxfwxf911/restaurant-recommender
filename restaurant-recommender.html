@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>餐厅推荐</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+:root {
+  --bg:#F2F2F7;
+  --card:#FFFFFF;
+  --text:#1C1C1E;
+  --sub:#8E8E93;
+  --accent:#007AFF;
+  --sep:#E5E5EA;
+  --red:#FF3B30;
+  --orange:#FF9500;
+  --green:#34C759;
+  --radius:16px;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --shadow-lg:0 8px 32px rgba(0,0,0,.08),0 2px 8px rgba(0,0,0,.04);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;font-size:17px;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{min-height:100dvh;display:flex;justify-content:center}
+#app{width:100%;max-width:480px;min-height:100dvh;position:relative;overflow:hidden}
+
+/* Nav */
+nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:rgba(249,249,249,.94);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--sep);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom,0)}
+nav button{flex:1;padding:10px 0 6px;border:0;background:none;color:var(--sub);font-size:11px;font-weight:500;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:color .2s}
+nav button.active{color:var(--accent)}
+nav button svg{width:24px;height:24px}
+
+/* Views */
+.view{display:none;padding:24px 20px 100px;animation:fadeIn .35s ease}
+.view.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
+
+h1{font-size:28px;font-weight:700;letter-spacing:-.01em;margin-bottom:4px}
+.subtitle{font-size:15px;color:var(--sub);margin-bottom:24px}
+
+/* Home Image Strip */
+.home-img-strip{display:flex;gap:10px;overflow-x:auto;padding:0 0 16px;margin-bottom:8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.home-img-strip::-webkit-scrollbar{display:none}
+.home-img-strip .strip-card{flex-shrink:0;width:140px;height:100px;border-radius:14px;background-size:cover;background-position:center;scroll-snap-align:start;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+.home-img-strip .strip-card::after{content:'';position:absolute;inset:0;background:rgba(0,0,0,.08)}
+.strip-label{position:absolute;bottom:8px;left:8px;color:#fff;font-size:11px;font-weight:600;z-index:1;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+
+/* Home Share Button */
+.home-header{display:flex;align-items:flex-start;justify-content:space-between}
+.btn-share-small{flex-shrink:0;width:38px;height:38px;border-radius:50%;border:1.5px solid var(--sep);background:var(--card);color:var(--text);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-top:2px;transition:all .2s}
+.btn-share-small:active{background:var(--bg);border-color:var(--accent)}
+
+/* Question Cards */
+.card{background:var(--card);border-radius:var(--radius);padding:24px;margin-bottom:16px;box-shadow:var(--shadow);transition:all .3s ease}
+.card h2{font-size:18px;font-weight:600;margin-bottom:16px}
+.options{display:flex;flex-direction:column;gap:10px}
+.btn-option{display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 18px;border:2px solid var(--sep);border-radius:12px;background:var(--card);font-size:16px;font-weight:500;color:var(--text);cursor:pointer;transition:all .2s;text-align:left}
+.btn-option:hover{border-color:var(--accent);background:#F0F5FF}
+.btn-option.selected{border-color:var(--accent);background:#EBF3FE;color:var(--accent)}
+.btn-option .check{width:22px;height:22px;border-radius:50%;border:2px solid var(--sep);display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
+.btn-option.selected .check{border-color:var(--accent);background:var(--accent)}
+.btn-option.selected .check::after{content:'';display:block;width:6px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg) translateY(-1px)}
+
+/* Loading */
+.loading-box{text-align:center;padding:60px 20px;animation:slideUp .5s ease}
+.loading-dots{display:flex;justify-content:center;gap:8px;margin:24px 0}
+.loading-dots span{width:10px;height:10px;border-radius:50%;background:var(--accent);animation:pulse 1.4s infinite}
+.loading-dots span:nth-child(2){animation-delay:.2s}
+.loading-dots span:nth-child(3){animation-delay:.4s}
+.loading-text{font-size:16px;color:var(--sub)}
+
+/* Result Card */
+.result-card{background:var(--card);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-lg);animation:slideUp .5s ease}
+.result-img{width:100%;height:200px;object-fit:cover;display:block}
+.result-img-placeholder{width:100%;height:200px;display:flex;align-items:center;justify-content:center;font-size:64px;color:#fff}
+.result-body{padding:20px}
+.result-name{font-size:24px;font-weight:700;margin-bottom:8px}
+.result-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.result-tag{padding:4px 12px;border-radius:20px;font-size:13px;font-weight:500}
+.tag-cuisine{background:#FFF3E0;color:#E65100}
+.tag-budget{background:#E8F5E9;color:#2E7D32}
+.tag-people{background:#E3F2FD;color:#1565C0}
+.result-section{margin-top:16px;padding-top:16px;border-top:1px solid var(--sep)}
+.result-section h3{font-size:14px;font-weight:600;color:var(--sub);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+.result-section p{font-size:16px;line-height:1.5}
+.price-big{font-size:36px;font-weight:700;color:var(--accent)}
+.price-unit{font-size:16px;font-weight:400;color:var(--sub)}
+.stars{color:var(--orange);font-size:16px;letter-spacing:2px}
+.fallback-banner{background:#FFF9E6;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:14px;color:#8D6E00;display:flex;align-items:flex-start;gap:8px}
+.btn-order{width:100%;padding:16px;border:0;border-radius:12px;background:var(--accent);color:#fff;font-size:17px;font-weight:600;cursor:pointer;margin-top:20px;transition:opacity .2s}
+.btn-order:active{opacity:.8}
+.btn-order:disabled{opacity:.5;pointer-events:none}
+.contact-panel{background:#F0F7FF;border-radius:12px;padding:16px;margin-top:12px;animation:slideUp .35s ease;display:none}
+.contact-panel.show{display:block}
+.contact-phone{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:700;color:var(--accent);text-decoration:none;padding:8px 0;word-break:break-all}
+.contact-phone svg{flex-shrink:0}
+.contact-hint{font-size:13px;color:var(--sub);margin-top:4px}
+.qr-panel{text-align:center;margin-top:12px;animation:slideUp .35s ease;display:none}
+.qr-panel.show{display:block}
+.qr-panel img{width:180px;height:180px;border-radius:12px;border:1px solid var(--sep)}
+.qr-panel .qr-hint{font-size:12px;color:var(--sub);margin-top:6px}
+.order-success{display:flex;align-items:center;gap:6px;color:var(--green);font-size:14px;font-weight:600;margin-top:12px;animation:slideUp .35s ease}
+.btn-share{width:100%;padding:14px;border:2px solid var(--sep);border-radius:12px;background:transparent;color:var(--text);font-size:15px;font-weight:500;cursor:pointer;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px}
+.btn-back{display:inline-flex;align-items:center;gap:4px;padding:8px 0;border:0;background:none;color:var(--accent);font-size:15px;cursor:pointer;margin-bottom:16px}
+
+/* Ranking */
+.rank-list{display:flex;flex-direction:column;gap:12px}
+.rank-card{background:var(--card);border-radius:var(--radius);padding:16px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow)}
+.rank-num{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0;background:var(--sep);color:var(--sub)}
+.rank-card:nth-child(1) .rank-num{background:#FFD700;color:#fff;font-size:18px}
+.rank-card:nth-child(2) .rank-num{background:#C0C0C0;color:#fff;font-size:18px}
+.rank-card:nth-child(3) .rank-num{background:#CD7F32;color:#fff;font-size:18px}
+.rank-info{flex:1;min-width:0}
+.rank-info h3{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rank-info p{font-size:13px;color:var(--sub);margin-top:2px}
+.rank-orders{text-align:right}
+.rank-orders .count{font-size:18px;font-weight:700}
+.rank-orders .label{font-size:11px;color:var(--sub)}
+
+/* Admin */
+.admin-form{background:var(--card);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);margin-bottom:20px}
+.admin-form label{display:block;font-size:13px;font-weight:600;color:var(--sub);margin-bottom:4px;margin-top:12px}
+.admin-form label:first-child{margin-top:0}
+.admin-form input,.admin-form select,.admin-form textarea{width:100%;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit;color:var(--text);background:var(--bg);transition:border-color .2s;resize:vertical}
+.admin-form input:focus,.admin-form select:focus,.admin-form textarea:focus{outline:none;border-color:var(--accent)}
+.admin-form textarea{min-height:60px}
+.admin-form .btn-submit{width:100%;padding:14px;margin-top:16px;border:0;border-radius:12px;background:var(--accent);color:#fff;font-size:16px;font-weight:600;cursor:pointer}
+.admin-form .btn-submit:active{opacity:.8}
+.img-urls{margin-top:6px}
+.img-urls input{margin-top:6px}
+.btn-add-url{padding:8px 16px;border:1px dashed var(--sep);border-radius:8px;background:none;color:var(--accent);font-size:13px;cursor:pointer;margin-top:6px}
+.admin-list-item{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:10px;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px}
+.admin-list-item .thumb{width:48px;height:48px;border-radius:10px;object-fit:cover;flex-shrink:0;background:var(--sep)}
+.admin-list-item .info{flex:1;min-width:0}
+.admin-list-item h4{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admin-list-item p{font-size:12px;color:var(--sub);margin-top:2px}
+.btn-sm{padding:6px 14px;border:0;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;margin-left:4px}
+.btn-edit{background:var(--sep);color:var(--text)}
+.btn-del{background:#FFE5E5;color:var(--red)}
+.btn-edit:active,.btn-del:active{opacity:.7}
+.empty-state{text-align:center;padding:40px 20px;color:var(--sub)}
+.empty-state .icon{font-size:48px;margin-bottom:12px}
+.btn-reset{display:block;margin:20px auto 0;padding:10px 24px;border:1px solid var(--sep);border-radius:10px;background:transparent;color:var(--sub);font-size:13px;cursor:pointer}
+
+/* Image Upload */
+.img-upload-area{border:2px dashed var(--sep);border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:border-color .2s;margin-top:6px}
+.img-upload-area:hover{border-color:var(--accent)}
+.img-upload-area input{display:none}
+.img-upload-hint{font-size:14px;color:var(--sub)}
+.img-preview-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.img-preview-item{width:72px;height:72px;border-radius:10px;background-size:cover;background-position:center;position:relative;flex-shrink:0}
+.img-preview-item .del{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;border:0;font-size:12px;line-height:20px;text-align:center;cursor:pointer;padding:0}
+
+/* Result Image Swiper */
+.result-img-wrap{position:relative;height:200px;overflow:hidden;cursor:pointer}
+.result-img-wrap .result-img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;transition:opacity .35s}
+.result-img-wrap .result-img-placeholder{position:absolute;top:0;left:0;width:100%;height:100%}
+.img-dots{display:flex;justify-content:center;gap:6px;padding:8px 0;margin-top:-36px;position:relative;z-index:2}
+.img-dots span{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);transition:all .25s}
+.img-dots span.active{background:#fff;width:8px;height:8px;margin-top:-1px}
+.img-counter{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.5);color:#fff;font-size:12px;padding:3px 8px;border-radius:10px;z-index:2}
+.img-expand{position:absolute;bottom:12px;right:12px;width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;z-index:2;pointer-events:none}
+
+/* Lightbox */
+.lightbox{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.92);z-index:300;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s ease}
+.lightbox img{max-width:95vw;max-height:85vh;object-fit:contain;border-radius:4px;box-shadow:0 4px 30px rgba(0,0,0,.3)}
+.lightbox-close{position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:50%;border:0;background:rgba(255,255,255,.15);color:#fff;font-size:20px;cursor:pointer;z-index:301;display:flex;align-items:center;justify-content:center}
+.lightbox-nav{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.15);color:#fff;font-size:22px;cursor:pointer;z-index:301;display:flex;align-items:center;justify-content:center}
+.lightbox-prev{left:12px}.lightbox-next{right:12px}
+.lightbox-counter{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.7);font-size:14px;z-index:301}
+
+/* Floating Sync Button */
+.fab-sync{position:fixed;bottom:100px;right:16px;width:44px;height:44px;border-radius:50%;border:0;background:var(--card);box-shadow:0 2px 12px rgba(0,0,0,.15);cursor:pointer;z-index:150;display:flex;align-items:center;justify-content:center;font-size:20px;transition:all .25s}
+.fab-sync.connected{background:#E8F5E9}
+.fab-dot{position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;background:#C0C0C0;border:2px solid var(--card)}
+.fab-sync.connected .fab-dot{background:var(--green)}
+/* Sync Panel */
+.sync-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:250;display:none;animation:fadeIn .2s ease}
+.sync-overlay.show{display:block}
+.sync-panel{position:fixed;bottom:0;left:50%;transform:translateX(-50%)translateY(100%);width:100%;max-width:480px;max-height:85vh;overflow-y:auto;background:var(--card);border-radius:20px 20px 0 0;z-index:251;padding:28px 20px 40px;transition:transform .3s ease;box-shadow:0 -4px 20px rgba(0,0,0,.12)}
+.sync-overlay.show .sync-panel{transform:translateX(-50%)translateY(0)}
+.sync-panel h2{font-size:20px;font-weight:700;margin-bottom:6px}
+.sync-panel .step{display:flex;gap:10px;margin:14px 0;align-items:flex-start}
+.sync-panel .step-num{width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sync-panel .step p{font-size:14px;line-height:1.5;flex:1}
+.sync-panel code{display:block;background:var(--bg);padding:10px 14px;border-radius:8px;font-size:12px;word-break:break-all;margin-top:6px;white-space:pre-wrap;max-height:120px;overflow-y:auto}
+.sync-panel .btn-close{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;border:0;background:var(--sep);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+
+/* Toast */
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#1C1C1E;color:#fff;padding:12px 24px;border-radius:24px;font-size:14px;font-weight:500;z-index:200;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+// ── Database ──────────────────────────────────
+const DB_KEY = 'restaurant_db';
+const ORDERS_KEY = 'restaurant_orders';
+const CUISINE_KEY = 'cuisine_list';
+const DEFAULT_CUISINES = ['中餐','火锅','日料','西餐'];
+const CUISINE_EMOJI = {中餐:'🥢',火锅:'🍲',日料:'🍣',西餐:'🍝'};
+function loadCuisines(){try{const d=localStorage.getItem(CUISINE_KEY);return d?JSON.parse(d):null}catch(e){return null}}
+function saveCuisines(data){localStorage.setItem(CUISINE_KEY,JSON.stringify(data));fbSet('/cuisines',data)}
+function getCuisines(){let c=loadCuisines();if(!c){c=[...DEFAULT_CUISINES];saveCuisines(c)}return c}
+const APP_URL_KEY='app_share_url';
+function getAppUrl(){return localStorage.getItem(APP_URL_KEY)||''}
+function setAppUrl(url){localStorage.setItem(APP_URL_KEY,url);fbSet('/appUrl',url)}
+
+const DEFAULT_RESTAURANTS = [
+  {id:'r1',name:'鼎泰丰',cuisine:'中餐',budget:'50-100',party:['1-2','3-5'],reason:'小笼包界的天花板，米其林一星品质，服务细致到帮客人剥虾壳，商务宴请和约会从未失手。',mustTry:'蟹粉小笼包、虾仁蛋炒饭、原盅鸡汤',avgPrice:80,rating:4.7,phone:'021-63865778',address:'上海市黄浦区淮海中路999号环贸广场L4',lat:31.218,lng:121.467,images:[]},
+  {id:'r2',name:'大董烤鸭',cuisine:'中餐',budget:'100+',party:['3-5','6+'],reason:'京城烤鸭第一梯队，酥不腻鸭皮蘸白糖入口即化，意境菜摆盘如艺术品，请客倍有面儿。',mustTry:'酥不腻烤鸭、董氏烧海参、芥末鸭掌',avgPrice:350,rating:4.8,phone:'010-65511808',address:'北京市朝阳区建国路87号SKP六层',lat:39.912,lng:116.475,images:[]},
+  {id:'r3',name:'外婆家',cuisine:'中餐',budget:'50以下',party:['1-2','3-5','6+'],reason:'国民家常菜馆，3块钱的麻婆豆腐卖出年均千万份，性价比之王，随便点不心疼。',mustTry:'麻婆豆腐、外婆红烧肉、绿茶饼',avgPrice:45,rating:4.3,phone:'0571-88086788',address:'杭州市西湖区北山路78号',lat:30.254,lng:120.148,images:[]},
+  {id:'r4',name:'新荣记',cuisine:'中餐',budget:'100+',party:['3-5','6+'],reason:'台州菜天花板，东海海鲜每日空运，黄鱼年糕吃一次记一辈子，米其林三星中餐之光。',mustTry:'野生大黄鱼年糕、沙蒜豆面、脆皮乳鸽',avgPrice:600,rating:4.9,phone:'021-53865777',address:'上海市黄浦区中山东一路18号外滩十八号6楼',lat:31.241,lng:121.492,images:[]},
+  {id:'r5',name:'点都德',cuisine:'中餐',budget:'50以下',party:['1-2','3-5','6+'],reason:'广式茶点排队王，红米肠粉现点现做，金沙海虾红米肠吃一口就忘不掉，人均50吃到撑。',mustTry:'金沙海虾红米肠、招牌虾饺皇、百合酱蒸凤爪',avgPrice:48,rating:4.5,phone:'020-81388222',address:'广州市天河区天河路208号天河城5楼',lat:23.134,lng:113.324,images:[]},
+  {id:'r6',name:'海底捞',cuisine:'火锅',budget:'50-100',party:['1-2','3-5','6+'],reason:'火锅界服务天花板，等位时有免费美甲擦鞋零食，生日给你唱到社恐，番茄锅底涮什么都好吃。',mustTry:'番茄锅底、虾滑、捞派毛肚',avgPrice:90,rating:4.6,phone:'400-910-7107',address:'北京市海淀区中关村大街15号中关村广场B1',lat:39.983,lng:116.314,images:[]},
+  {id:'r7',name:'小龙坎',cuisine:'火锅',budget:'50-100',party:['3-5','6+'],reason:'重庆老火锅灵魂，牛油锅底香到隔壁街，毛肚七上八下是信仰，一群人围着涮才叫生活。',mustTry:'精品毛肚、现炸酥肉、红糖糍粑',avgPrice:85,rating:4.4,phone:'028-86667788',address:'重庆市渝中区解放碑八一路177号',lat:29.562,lng:106.578,images:[]},
+  {id:'r8',name:'凑凑火锅',cuisine:'火锅',budget:'100+',party:['1-2','3-5','6+'],reason:'台式火锅颜值担当，大红袍珍珠奶茶比火锅还出名，花胶鸡锅底胶原蛋白满满，女生聚会首选。',mustTry:'大红袍珍珠奶茶、花胶鸡锅底、凑凑和牛',avgPrice:120,rating:4.5,phone:'010-64179988',address:'北京市朝阳区三里屯太古里南区B1',lat:39.934,lng:116.458,images:[]},
+  {id:'r9',name:'呷哺呷哺',cuisine:'火锅',budget:'50以下',party:['1-2'],reason:'一人食小火锅鼻祖，吧台式座位一个人也不尴尬，麻酱调料配肥牛是打工人午餐的黄金搭档。',mustTry:'精选肥牛套餐、麻酱调料、菌菇拼盘',avgPrice:42,rating:4.2,phone:'400-817-7878',address:'北京市西城区西单北大街133号君太百货B1',lat:39.913,lng:116.374,images:[]},
+  {id:'r10',name:'元气寿司',cuisine:'日料',budget:'50以下',party:['1-2','3-5'],reason:'回转寿司界的优衣库，品质稳定价格亲民，三文鱼新鲜度不输高端店，一人食也能吃出仪式感。',mustTry:'三文鱼寿司、鳗鱼寿司、抹茶大福',avgPrice:48,rating:4.1,phone:'020-38927888',address:'广州市天河区天河路383号太古汇B1',lat:23.135,lng:113.330,images:[]},
+  {id:'r11',name:'鳗满',cuisine:'日料',budget:'50-100',party:['1-2'],reason:'活鳗现烤专门店，关西风炭烤外焦里嫩，一鳗三吃仪式感拉满，是上海日料圈公认的鳗鱼饭标杆。',mustTry:'名古屋三吃鳗鱼饭、鳗鱼骨汤、鳗鱼蛋卷',avgPrice:95,rating:4.6,phone:'021-63339977',address:'上海市静安区南京西路1515号静安嘉里中心B1',lat:31.229,lng:121.446,images:[]},
+  {id:'r12',name:'鮨一',cuisine:'日料',budget:'100+',party:['1-2'],reason:'黑珍珠一钻的Omakase，板前师傅根据当天鱼获即兴发挥，每一贯寿司都是艺术品，纪念日来这准没错。',mustTry:'当日Omakase套餐、金枪鱼大腹、马粪海胆',avgPrice:880,rating:4.9,phone:'021-54039999',address:'上海市徐汇区衡山路8号',lat:31.208,lng:121.451,images:[]},
+  {id:'r13',name:'萨莉亚',cuisine:'西餐',budget:'50以下',party:['1-2','3-5','6+'],reason:'意大利沙县小吃名不虚传，9块钱的焗饭年销上亿份，蜗牛配蒜香面包是穷精致的终极奥义。',mustTry:'蒜香蜗牛、芝士焗饭、提拉米苏',avgPrice:30,rating:4.0,phone:'400-882-2558',address:'上海市浦东新区陆家嘴西路168号正大广场3楼',lat:31.237,lng:121.502,images:[]},
+  {id:'r14',name:'蓝蛙',cuisine:'西餐',budget:'50-100',party:['1-2','3-5'],reason:'美式汉堡的标杆，牛肉饼厚实多汁，薯条是粗切美式款，周五晚上汉堡配精酿啤酒是都市人的快乐。',mustTry:'经典牛肉汉堡、美式粗薯条、科布沙拉',avgPrice:85,rating:4.3,phone:'021-53825566',address:'上海市黄浦区淮海中路300号K11艺术中心B2',lat:31.225,lng:121.473,images:[]},
+  {id:'r15',name:'王品牛排',cuisine:'西餐',budget:'100+',party:['1-2','3-5'],reason:'台式西餐服务典范，一头牛只供六客的台塑牛排全熟也不柴，求婚成功率据说行业最高。',mustTry:'台塑牛排、法式菌菇浓汤、巧克力熔岩蛋糕',avgPrice:280,rating:4.7,phone:'021-53069888',address:'上海市静安区南京西路1266号恒隆广场5楼',lat:31.229,lng:121.453,images:[]},
+  {id:'r16',name:'西贝莜面村',cuisine:'中餐',budget:'50-100',party:['3-5','6+'],reason:'西北菜连锁之王，闭着眼睛点道道都好吃不是吹的，开放式厨房干净得能当镜子照，带娃家庭的首选。',mustTry:'西红柿浇汁莜面、烤羊排、黄米凉糕',avgPrice:75,rating:4.4,phone:'400-055-6977',address:'北京市朝阳区朝阳大悦城6楼',lat:39.924,lng:116.519,images:[]}
+];
+
+function loadDB(){try{const d=localStorage.getItem(DB_KEY);return d?JSON.parse(d):null}catch(e){return null}}
+// ── Firebase Sync ────────────────────────────
+const FB_CONFIG_KEY='firebase_config';
+let _fbApp=null;
+function getFbConfig(){try{return JSON.parse(localStorage.getItem(FB_CONFIG_KEY))||null}catch(e){return null}}
+function fbInit(){
+  if(_fbApp)return _fbApp;
+  const cfg=getFbConfig();
+  if(!cfg||!cfg.databaseURL||typeof firebase==='undefined')return null;
+  try{_fbApp=firebase.initializeApp(cfg,'restaurant-app');return _fbApp}catch(e){return null}
+}
+function fbSet(path,data){
+  const app=fbInit();if(!app)return;
+  firebase.database(app).ref(path).set(JSON.parse(JSON.stringify(data))).catch(()=>{});
+}
+function fbListen(){
+  const app=fbInit();if(!app)return;
+  firebase.database(app).ref('/restaurants').on('value',snap=>{if(snap.val()){localStorage.setItem(DB_KEY,JSON.stringify(snap.val()));if(currentView!=='recommend'||step===0)render()}});
+  firebase.database(app).ref('/orders').on('value',snap=>{if(snap.val())localStorage.setItem(ORDERS_KEY,JSON.stringify(snap.val()))});
+  firebase.database(app).ref('/cuisines').on('value',snap=>{if(snap.val())localStorage.setItem(CUISINE_KEY,JSON.stringify(snap.val()))});
+  firebase.database(app).ref('/appUrl').on('value',snap=>{if(snap.val()!=null)localStorage.setItem(APP_URL_KEY,snap.val())});
+}
+
+function saveDB(data){localStorage.setItem(DB_KEY,JSON.stringify(data));fbSet('/restaurants',data)}
+function getDB(){let db=loadDB();if(!db){db=JSON.parse(JSON.stringify(DEFAULT_RESTAURANTS));saveDB(db)}return db}
+function loadOrders(){try{const d=localStorage.getItem(ORDERS_KEY);return d?JSON.parse(d):{}}catch(e){return{}}}
+function saveOrders(data){localStorage.setItem(ORDERS_KEY,JSON.stringify(data));fbSet('/orders',data)}
+function getOrders(){return loadOrders()}
+
+// ── Geolocation ──────────────────────────────
+let _userLoc=null; // {lat, lng}
+function haversine(lat1,lng1,lat2,lng2){
+  const R=6371,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function getUserLocation(){
+  return new Promise(resolve=>{
+    if(_userLoc)return resolve(_userLoc);
+    if(!navigator.geolocation){resolve(null);return}
+    navigator.geolocation.getCurrentPosition(
+      pos=>{_userLoc={lat:pos.coords.latitude,lng:pos.coords.longitude};resolve(_userLoc)},
+      ()=>{resolve(null)},
+      {timeout:5000,maximumAge:60000}
+    );
+  });
+}
+function computeDistances(restaurants){
+  if(!_userLoc)return restaurants;
+  return restaurants.map(r=>{
+    if(r.lat==null||r.lng==null)return{...r,distance:Infinity};
+    return{...r,distance:haversine(_userLoc.lat,_userLoc.lng,r.lat,r.lng)};
+  });
+}
+
+// ── State ────────────────────────────────────
+let currentView='recommend';
+let step=0, qPeople='', qCuisine='', qBudget='', qSort='';
+let editId=null;
+let pendingImages=[];
+
+// ── Image Processing ──────────────────────────
+function processImageFile(file){
+  return new Promise(resolve=>{
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        const maxW=400;
+        let w=img.width,h=img.height;
+        if(w>maxW){h=h*maxW/w;w=maxW}
+        const canvas=document.createElement('canvas');
+        canvas.width=w;canvas.height=h;
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img,0,0,w,h);
+        resolve(canvas.toDataURL('image/jpeg',0.65));
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+async function handleFiles(files){
+  for(const f of files){
+    if(!f.type.startsWith('image/'))continue;
+    const dataUrl=await processImageFile(f);
+    pendingImages.push(dataUrl);
+  }
+}
+function removePendingImage(idx){pendingImages.splice(idx,1)}
+let _lbImgs=[],_lbIdx=0;
+function showLightbox(imgs,idx){
+  _lbImgs=imgs;_lbIdx=idx;
+  const html=`<div class="lightbox">
+    <button class="lightbox-close">&times;</button>
+    ${imgs.length>1?`<button class="lightbox-nav lightbox-prev">‹</button>`:''}
+    <img src="${imgs[idx]}" alt="餐厅图片 ${idx+1}">
+    ${imgs.length>1?`<button class="lightbox-nav lightbox-next">›</button>`:''}
+    ${imgs.length>1?`<div class="lightbox-counter">${idx+1} / ${imgs.length}</div>`:''}
+  </div>`;
+  const existing=document.querySelector('.lightbox');if(existing)existing.remove();
+  document.body.insertAdjacentHTML('beforeend',html);
+  document.body.style.overflow='hidden';
+}
+function closeLightbox(){
+  const lb=document.querySelector('.lightbox');if(lb)lb.remove();
+  document.body.style.overflow='';
+  _lbImgs=[];_lbIdx=0;
+}
+function navigateLightbox(dir){
+  const lb=document.querySelector('.lightbox');if(!lb)return;
+  _lbIdx=(_lbIdx+dir+_lbImgs.length)%_lbImgs.length;
+  lb.querySelector('img').src=_lbImgs[_lbIdx];
+  const counter=lb.querySelector('.lightbox-counter');
+  if(counter)counter.textContent=(_lbIdx+1)+' / '+_lbImgs.length;
+}
+function renderImgPreviews(){
+  return pendingImages.map((url,i)=>`<div class="img-preview-item" style="background-image:url(${url})"><button class="del" data-action="rm-img" data-idx="${i}">&times;</button></div>`).join('');
+}
+
+// ── Render ───────────────────────────────────
+const app=document.getElementById('app');
+const toast=document.getElementById('toast');
+
+function showToast(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2000)}
+
+function render(){
+  let html=renderNav()+renderFab();
+  if(currentView==='recommend')html+=renderRecommend();
+  else if(currentView==='loading')html+=renderLoading();
+  else if(currentView==='result')html+=renderResult();
+  else if(currentView==='ranking')html+=renderRanking();
+  else if(currentView==='admin')html+=renderAdmin();
+  app.innerHTML=html;
+  bindEvents();
+}
+
+function renderFab(){
+  const fbCfg=getFbConfig();
+  const connected=!!(fbCfg&&fbCfg.databaseURL&&_fbApp);
+  let h=`<button class="fab-sync${connected?' connected':''}" data-action="open-sync" title="${connected?'已连接 Firebase':'未配置同步'}">
+    🔥<span class="fab-dot"></span>
+  </button>`;
+  h+=`<div class="sync-overlay" id="sync-overlay">
+    <div class="sync-panel">
+      <button class="btn-close" data-action="close-sync">&times;</button>
+      <h2>☁️ 多端实时同步</h2>
+      <p style="font-size:13px;color:var(--sub);margin-bottom:12px">${connected?'<span style="color:var(--green)">✅ 已连接</span> — 手机和电脑数据实时同步中':'配置 Firebase 后，手机和电脑数据实时同步'}</p>
+      <div class="step"><div class="step-num">1</div><div><p style="font-weight:600">填写 Firebase 配置</p></div></div>
+      <label style="display:block;font-size:13px;font-weight:600;color:var(--sub);margin:8px 0 4px">Database URL</label>
+      <input id="sf_fb_url" value="${fbCfg&&fbCfg.databaseURL?fbCfg.databaseURL:''}" placeholder="https://your-project.firebaseio.com" style="width:100%;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit">
+      <label style="display:block;font-size:13px;font-weight:600;color:var(--sub);margin:8px 0 4px">API Key</label>
+      <input id="sf_fb_key" value="${fbCfg&&fbCfg.apiKey?fbCfg.apiKey:''}" placeholder="AIzaSy..." style="width:100%;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit">
+      <button class="btn-submit" data-action="save-fb-config" style="margin-top:12px">${connected?'重新连接':'保存并连接'}</button>
+      ${connected?`<button class="btn-share" data-action="disconnect-fb" style="margin-top:8px;color:var(--red);border-color:var(--red)">断开同步</button>`:''}
+      <div class="step" style="margin-top:20px"><div class="step-num">2</div><div><p style="font-weight:600">获取配置（点击展开）</p></div></div>
+      <details style="font-size:12px;color:var(--sub);line-height:1.7;margin-left:34px">
+        <summary style="cursor:pointer;font-weight:600;color:var(--accent)">如何获取 Database URL 和 API Key？</summary>
+        <p style="margin-top:6px">打开 <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a>，创建或选择一个项目</p>
+        <p>左侧菜单 → <b>Realtime Database</b> → 创建数据库 → 位置选美国 → <b>以测试模式启动</b></p>
+        <p>左上角 ⚙️ 项目设置 → 添加应用 → <b>Web</b> → 复制 <b>databaseURL</b> 和 <b>apiKey</b></p>
+      </details>
+      <div class="step" style="margin-top:16px"><div class="step-num">3</div><div><p style="font-weight:600">安全规则（可选，建议设置）</p></div></div>
+      <details style="font-size:12px;color:var(--sub);line-height:1.7;margin-left:34px">
+        <summary style="cursor:pointer;font-weight:600;color:var(--accent)">复制以下规则到 Firebase Console</summary>
+        <p style="margin-top:6px">Firebase Console → Realtime Database → 规则 → 粘贴 → 发布</p>
+        <code>{
+  "rules": {
+    ".read": true,
+    ".write": true
+  }
+}</code>
+        <p style="margin-top:4px;color:var(--orange)">⚠️ 此规则允许所有人读写，仅适合小范围使用。正式上线前建议加上验证。</p>
+      </details>
+    </div>
+  </div>`;
+  return h;
+}
+
+function renderNav(){
+  const tabs=[
+    {key:'recommend',label:'推荐',icon:'<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>'},
+    {key:'ranking',label:'排行榜',icon:'<path d="M16 6l2.29-2.29-4.88-4.88-4 4L2 0 0 2l5 5 4.41-4.41L12 5.17 16 1.17 18.29 3.46 18 4h3V1l-1 2.71L16 6zm0 14l-1-2.71L12 14l-2.59 2.59L5 12l-3 3-2-2v4h16v-4l-2 3z"/>'},
+    {key:'admin',label:'管理',icon:'<path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.38.12-.56l-1.89-3.28c-.12-.19-.36-.26-.56-.18l-2.38.96c-.5-.38-1.05-.68-1.65-.88L14.45 3.5c-.04-.2-.2-.34-.4-.34h-3.78c-.2 0-.36.14-.4.34l-.32 2.52c-.6.2-1.15.5-1.65.88l-2.38-.96c-.2-.08-.44-.01-.56.18l-1.89 3.28c-.12.19-.07.42.12.56l2.03 1.58c-.04.31-.06.63-.06.94 0 .31.02.63.06.94l-2.03 1.58c-.18.14-.23.38-.12.56l1.89 3.28c.12.19.36.26.56.18l2.38-.96c.5.38 1.05.68 1.65.88l.32 2.52c.04.2.2.34.4.34h3.78c.2 0 .36-.14.4-.34l.32-2.52c.6-.2 1.15-.5 1.65-.88l2.38.96c.2.08.44.01.56-.18l1.89-3.28c.12-.19.07-.42-.12-.56l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>'}
+  ];
+  return `<nav>${tabs.map(t=>`
+    <button class="${currentView===t.key?'active':''}" data-nav="${t.key}">
+      <svg viewBox="0 0 24 24" fill="currentColor">${t.icon}</svg>
+      ${t.label}
+    </button>`).join('')}</nav>`;
+}
+
+function renderRecommend(){
+  const steps=[
+    {q:'几个人吃饭？',key:'people',opts:[{v:'1-2',l:'1-2人'},{v:'3-5',l:'3-5人'},{v:'6+',l:'6人以上'}]},
+    {q:'想吃什么菜？',key:'cuisine',opts:[{v:'随便',l:'随便 🎲'},...getCuisines().map(c=>({v:c,l:c+' '+(CUISINE_EMOJI[c]||'🍽️')}))]},
+    {q:'人均预算？',key:'budget',opts:[{v:'50以下',l:'50元以下'},{v:'50-100',l:'50-100元'},{v:'100+',l:'100元以上'}]},
+    {q:'推送方式？',key:'sort',opts:[{v:'nearest',l:'📍 离我最近'},{v:'ranking',l:'🏆 按排行榜'}]}
+  ];
+  // Decorative image strip using Unsplash food/restaurant photos
+  const stripImgs=[
+    {url:'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=300&h=200&fit=crop',label:'精致西餐'},
+    {url:'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=300&h=200&fit=crop',label:'亚洲风味'},
+    {url:'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=300&h=200&fit=crop',label:'氛围餐厅'},
+    {url:'https://images.unsplash.com/photo-1559339352-11d035aa65de?w=300&h=200&fit=crop',label:'火锅盛宴'},
+    {url:'https://images.unsplash.com/photo-1551218808-94e220e084d2?w=300&h=200&fit=crop',label:'日料美学'}
+  ];
+  const labels={people:qPeople,cuisine:qCuisine,budget:qBudget,sort:qSort};
+  let h=`<div class="view active">
+    <div class="home-img-strip">${stripImgs.map(img=>`<div class="strip-card" style="background-image:url(${img.url})"><span class="strip-label">${img.label}</span></div>`).join('')}</div>
+    <div class="home-header">
+      <div><h1>🍽️ 餐厅推荐</h1><p class="subtitle">回答三个问题，帮你找到最适合的餐厅</p></div>
+      <button class="btn-share-small" data-action="qr-home" title="分享小程序">📤</button>
+    </div>
+    <div id="steps">`;
+  steps.forEach((s,i)=>{
+    const done=i<step;
+    const active=i===step;
+    const selVal=labels[s.key];
+    const selLabel=s.opts.find(o=>o.v===selVal);
+    if(done || active){
+      h+=`<div class="card" style="${i<step?'opacity:.5':''}"><h2>${s.q}</h2>`;
+      if(done){
+        h+=`<div class="btn-option selected"><span>${selLabel?selLabel.l:'—'}</span><span class="check"></span></div>`;
+      }else{
+        h+=`<div class="options">${s.opts.map(o=>`
+          <button class="btn-option${selVal===o.v?' selected':''}" data-step="${i}" data-key="${s.key}" data-val="${o.v}">
+            <span>${o.l}</span><span class="check"></span>
+          </button>`).join('')}</div>`;
+      }
+      h+='</div>';
+    }
+  });
+  h+='</div></div>';
+  return h;
+}
+
+function renderLoading(){
+  return `<div class="view active" style="display:flex;align-items:center;justify-content:center;min-height:80dvh">
+    <div class="loading-box">
+      <div class="loading-dots"><span></span><span></span><span></span></div>
+      <p class="loading-text">正在为你寻找最合适的餐厅...</p>
+    </div>
+  </div>`;
+}
+
+function renderResult(){
+  const rec=window._lastRecommendation;
+  if(!rec) return renderRecommend();
+  const r=rec.restaurant;
+  const imgs=r.images&&r.images.length>0?r.images:[];
+  const imgHTML=imgs.length>0
+    ?`<div class="result-img-wrap" data-action="open-lightbox" data-idx="0">
+        ${genPlaceholder(r,'result-img-placeholder')}
+        ${imgs.map((url,i)=>`<img class="result-img" src="${url}" alt="${r.name} ${i+1}" onerror="this.style.display='none'" onload="this.parentElement.querySelector('.result-img-placeholder').style.display='none'" style="position:absolute;top:0;left:0;opacity:${i===0?1:0}">`).join('')}
+        <div class="img-expand">⤢</div>
+        ${imgs.length>1?`<div class="img-counter">1/${imgs.length}</div><div class="img-dots">${imgs.map((_,i)=>`<span class="${i===0?'active':''}"></span>`).join('')}</div>`:''}
+      </div>`
+    :genPlaceholder(r,'result-img-placeholder');
+
+  let h='<div class="view active">';
+  h+=`<button class="btn-back" data-action="restart"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>重新推荐</button>`;
+
+  if(rec.fallback){
+    h+=`<div class="fallback-banner">💡 我们在这个领域还在探索，帮你换成了一家好评最多的类似选择</div>`;
+  }
+
+  h+=`<div class="result-card">
+    ${imgHTML}
+    <div class="result-body">
+      <div class="result-name">${r.name}</div>
+      <div class="result-meta">
+        <span class="result-tag tag-cuisine">${r.cuisine}</span>
+        <span class="result-tag tag-budget">${r.budget}元/人</span>
+        <span class="result-tag tag-people">${rec.partySize}人适用</span>
+      </div>
+      ${r.distance!=null&&r.distance!==Infinity?`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:13px;font-weight:600;color:var(--green);background:#E8F5E9;padding:3px 10px;border-radius:12px">📍 ${r.distance<1?Math.round(r.distance*1000)+'m':r.distance.toFixed(1)+'km'}</span></div>`:''}
+      <div style="display:flex;align-items:baseline;gap:4px"><span class="price-big">¥${r.avgPrice}</span><span class="price-unit">/人</span></div>
+      <div class="stars" style="margin-top:6px">${'★'.repeat(Math.round(r.rating))}${'☆'.repeat(5-Math.round(r.rating))} ${r.rating}</div>
+      <div class="result-section"><h3>💪 硬核推荐理由</h3><p>${r.reason}</p></div>
+      <div class="result-section"><h3>🥢 必吃菜</h3><p>${r.mustTry}</p></div>
+      ${r.address?`<div class="result-section">
+        <h3>📍 餐厅地址</h3>
+        <p>${r.address}</p>
+        <a class="btn-share" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.name+' '+r.address)}" target="_blank" rel="noopener" style="text-decoration:none;margin-top:10px">🧭 开始导航</a>
+      </div>`:''}
+      <button class="btn-order" data-action="order" id="btn-contact">📞 联系商家</button>
+      <div class="contact-panel" id="contact-panel">
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">📞 商家电话</div>
+        <a class="contact-phone" id="contact-phone-link" href="tel:${r.phone||''}">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+          ${r.phone||'暂无'}
+        </a>
+        <p class="contact-hint">点击上方号码可直接拨打</p>
+        <div class="order-success" id="order-success">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          已联系商家，下单成功！
+        </div>
+      </div>
+    </div>
+  </div></div>`;
+  return h;
+}
+
+function genPlaceholder(r,cls='result-img-placeholder'){
+  const colors={中餐:'linear-gradient(135deg,#FF6B35,#F7931E)',火锅:'linear-gradient(135deg,#DC2626,#EF4444)',日料:'linear-gradient(135deg,#2D8B4E,#34C759)',西餐:'linear-gradient(135deg,#8B4513,#D2691E)'};
+  const emoji={中餐:'🥢',火锅:'🍲',日料:'🍣',西餐:'🍝'};
+  const bg=colors[r.cuisine]||'linear-gradient(135deg,#007AFF,#5856D6)';
+  return `<div class="${cls}" style="background:${bg}">${emoji[r.cuisine]||'🍽️'}</div>`;
+}
+
+function renderRanking(){
+  const db=getDB();
+  const orders=getOrders();
+  const ranked=[...db].map(r=>({...r,orderCount:orders[r.id]||0})).sort((a,b)=>b.orderCount-a.orderCount);
+  let h='<div class="view active"><h1>🏆 餐厅排行榜</h1><p class="subtitle">基于下单成功数据自动生成</p>';
+  if(ranked.every(r=>r.orderCount===0)){
+    h+=`<div class="empty-state"><div class="icon">📊</div><p>还没有下单数据</p><p style="font-size:13px;color:var(--sub);margin-top:4px">去推荐页面联系商家后，排行榜就会更新</p></div>`;
+  }else{
+    h+=`<div class="rank-list">${ranked.filter(r=>r.orderCount>0).map((r,i)=>`
+      <div class="rank-card">
+        <div class="rank-num">${i<3?['🥇','🥈','🥉'][i]:i+1}</div>
+        <div class="rank-info"><h3>${r.name}</h3><p>${r.cuisine} · ¥${r.avgPrice}/人 · ⭐${r.rating}</p></div>
+        <div class="rank-orders"><div class="count">${r.orderCount}</div><div class="label">单</div></div>
+      </div>`).join('')}</div>`;
+  }
+  h+='</div>';
+  return h;
+}
+
+function renderAdmin(){
+  const db=getDB();
+  let h='<div class="view active"><h1>⚙️ 餐厅管理</h1><p class="subtitle">自定义餐厅数据库 · 共 <b>'+db.length+'</b> 家</p>';
+
+  // App Share URL
+  const appUrl=getAppUrl();
+  h+=`<div class="admin-form">
+    <h3 style="margin-bottom:4px">🔗 小程序分享设置</h3>
+    <p style="font-size:13px;color:var(--sub);margin-bottom:10px">部署到服务器后，将访问地址填到这里，推荐页的二维码即可扫码打开小程序</p>
+    <div style="display:flex;gap:8px">
+      <input id="af_app_url" value="${appUrl}" placeholder="例如：https://mydomain.com/app.html" style="flex:1;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit">
+      <button class="btn-submit" style="width:auto;margin:0;padding:10px 20px;white-space:nowrap" data-action="save-app-url">保存链接</button>
+    </div>
+    ${appUrl?`<p style="margin-top:8px;font-size:12px;color:var(--green)">✅ 已设置，扫码将跳转到：${appUrl}</p>`:''}
+  </div>`;
+
+  // Form
+  const editing=editId?db.find(r=>r.id===editId):null;
+  if(editing){pendingImages=[...(editing.images||[])]}else if(!editId){pendingImages=[]}
+  h+=`<div class="admin-form">
+    <h3 style="margin-bottom:8px">${editing?'编辑餐厅':'添加新餐厅'}</h3>
+    <label>餐厅名称</label><input id="af_name" value="${editing?editing.name:''}" placeholder="例如：鼎泰丰">
+    <label>菜系</label><select id="af_cuisine">
+      ${getCuisines().map(c=>`<option value="${c}" ${editing&&editing.cuisine===c?'selected':''}>${c} ${CUISINE_EMOJI[c]||'🍽️'}</option>`).join('')}
+    </select>
+    <label>人均预算档位</label><select id="af_budget">
+      ${['50以下','50-100','100+'].map(b=>`<option value="${b}" ${editing&&editing.budget===b?'selected':''}>${b}元</option>`).join('')}
+    </select>
+    <label>适用人数（多选）</label>
+    <div style="display:flex;gap:8px;margin-top:4px">${['1-2','3-5','6+'].map(p=>{
+      const checked=editing&&editing.party&&editing.party.includes(p);
+      return `<label style="display:flex;align-items:center;gap:4px;font-size:14px;font-weight:400;color:var(--text);margin:0;cursor:pointer"><input type="checkbox" value="${p}" class="af_party" ${checked?'checked':''}> ${p}人</label>`;
+    }).join('')}</div>
+    <label>人均价格（元）</label><input id="af_avgPrice" type="number" value="${editing?editing.avgPrice:''}" placeholder="80">
+    <label>评分（1-5）</label><input id="af_rating" type="number" step="0.1" min="1" max="5" value="${editing?editing.rating:'4.5'}" placeholder="4.5">
+    <label>硬核推荐理由</label><textarea id="af_reason" placeholder="这家餐厅为什么值得去...">${editing?editing.reason:''}</textarea>
+    <label>必吃菜（用顿号分隔）</label><textarea id="af_mustTry" placeholder="菜名1、菜名2、菜名3">${editing?editing.mustTry:''}</textarea>
+    <label>餐厅图片（可上传多张）</label>
+    <label class="img-upload-area" id="img-upload-label">
+      <input type="file" id="af_images_input" accept="image/*" multiple>
+      <div class="img-upload-hint">📷 点击上传图片（自动压缩）</div>
+    </label>
+    <div class="img-preview-grid" id="img-previews">${renderImgPreviews()}</div>
+    <label>联系电话</label><input id="af_phone" value="${editing&&editing.phone?editing.phone:''}" placeholder="例如：021-63865778">
+    <label>餐厅地址（用于地图导航）</label><input id="af_address" value="${editing&&editing.address?editing.address:''}" placeholder="例如：上海市黄浦区淮海中路999号">
+    <div style="display:flex;gap:8px"><div style="flex:1"><label>纬度 Lat</label><input id="af_lat" type="number" step="0.001" value="${editing&&editing.lat?editing.lat:''}" placeholder="31.218"></div><div style="flex:1"><label>经度 Lng</label><input id="af_lng" type="number" step="0.001" value="${editing&&editing.lng?editing.lng:''}" placeholder="121.467"></div></div>
+    <button type="button" class="btn-add-url" data-action="geocode" style="margin-top:6px">📍 根据地址自动获取坐标</button>
+    <button class="btn-submit" data-action="save-restaurant">${editing?'保存修改':'添加餐厅'}</button>
+    ${editing?`<button class="btn-share" style="margin-top:8px" data-action="cancel-edit">取消编辑</button>`:''}
+  </div>`;
+
+  // Cuisine management
+  const cuisines=getCuisines();
+  h+=`<div class="admin-form" style="margin-top:16px">
+    <h3 style="margin-bottom:12px">🍜 菜系管理</h3>
+    <p style="font-size:13px;color:var(--sub);margin-bottom:12px">自定义"想吃什么菜？"的选项，将影响推荐页的菜系选择</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px" id="cuisine-tags">
+      ${cuisines.map(c=>`<span style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:var(--bg);border-radius:20px;font-size:14px;font-weight:500">${CUISINE_EMOJI[c]||'🍽️'} ${c}<button style="border:0;background:none;color:var(--sub);cursor:pointer;font-size:16px;padding:0 2px;line-height:1" data-action="del-cuisine" data-name="${c}">&times;</button></span>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px">
+      <input id="af_new_cuisine" placeholder="新菜系名称，例如：湘菜" style="flex:1;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit">
+      <button class="btn-submit" style="width:auto;margin:0;padding:10px 20px;white-space:nowrap" data-action="add-cuisine">+ 添加</button>
+    </div>
+  </div>`;
+
+  // List
+  h+=`<div style="margin-top:16px">${db.map(r=>`
+    <div class="admin-list-item">
+      <div class="thumb" style="${r.images&&r.images.length>0?'background:url('+r.images[0]+') center/cover':'background:var(--sep)'}"></div>
+      <div class="info"><h4>${r.name}</h4><p>${r.cuisine} · ¥${r.avgPrice}/人 · ⭐${r.rating} · ${(r.party||[]).join('/')}人</p>${r.address?`<p style="font-size:11px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍${r.address}</p>`:''}</div>
+      <button class="btn-sm btn-edit" data-action="edit-restaurant" data-id="${r.id}">编辑</button>
+      <button class="btn-sm btn-del" data-action="delete-restaurant" data-id="${r.id}">删除</button>
+    </div>`).join('')}</div>`;
+
+  h+=`<button class="btn-reset" data-action="reset-db">恢复默认数据库</button>`;
+  h+='</div>';
+  return h;
+}
+
+// ── Bind Events ──────────────────────────────
+function bindEvents(){
+  // Nav
+  document.querySelectorAll('[data-nav]').forEach(btn=>{
+    btn.addEventListener('click',()=>{currentView=btn.dataset.nav;step=0;qPeople='';qCuisine='';qBudget='';qSort='';editId=null;render()});
+  });
+  // Options
+  document.querySelectorAll('[data-step]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const s=parseInt(btn.dataset.step),k=btn.dataset.key,v=btn.dataset.val;
+      if(k==='people')qPeople=v;
+      else if(k==='cuisine')qCuisine=v;
+      else if(k==='budget')qBudget=v;
+      else if(k==='sort')qSort=v;
+      if(s<3){step=s+1;render()}
+      else{currentView='loading';render();setTimeout(doRecommend,1500)}
+    });
+  });
+  // Back / Restart
+  const backBtn=document.querySelector('[data-action="restart"]');
+  if(backBtn)backBtn.addEventListener('click',()=>{step=0;qPeople='';qCuisine='';qBudget='';qSort='';currentView='recommend';render()});
+  // Contact / Order
+  const orderBtn=document.querySelector('[data-action="order"]');
+  if(orderBtn){
+    orderBtn.addEventListener('click',()=>{
+      const rec=window._lastRecommendation;
+      if(!rec)return;
+      // Show contact panel
+      const panel=document.getElementById('contact-panel');
+      const success=document.getElementById('order-success');
+      if(panel)panel.classList.add('show');
+      if(success)success.style.display='flex';
+      // Record order
+      const orders=getOrders();
+      orders[rec.restaurant.id]=(orders[rec.restaurant.id]||0)+1;
+      saveOrders(orders);
+      // Update button
+      orderBtn.textContent='✅ 已联系商家';
+      orderBtn.disabled=true;
+      showToast('下单成功！排行榜已更新');
+    });
+  }
+  // Admin save
+  const saveBtn=document.querySelector('[data-action="save-restaurant"]');
+  if(saveBtn){
+    saveBtn.addEventListener('click',()=>{
+      const name=document.getElementById('af_name').value.trim();
+      if(!name){showToast('请输入餐厅名称');return}
+      const party=[...document.querySelectorAll('.af_party:checked')].map(cb=>cb.value);
+      if(party.length===0){showToast('请选择适用人数');return}
+      const images=[...pendingImages];
+      const data={
+        id:editId||'r'+Date.now(),
+        name,
+        cuisine:document.getElementById('af_cuisine').value,
+        budget:document.getElementById('af_budget').value,
+        party,
+        avgPrice:parseFloat(document.getElementById('af_avgPrice').value)||0,
+        rating:Math.min(5,Math.max(1,parseFloat(document.getElementById('af_rating').value)||4.5)),
+        reason:document.getElementById('af_reason').value.trim(),
+        mustTry:document.getElementById('af_mustTry').value.trim(),
+        phone:document.getElementById('af_phone').value.trim(),
+        address:document.getElementById('af_address').value.trim(),
+        lat:parseFloat(document.getElementById('af_lat').value)||null,
+        lng:parseFloat(document.getElementById('af_lng').value)||null,
+        images
+      };
+      const db=getDB();
+      const isEdit=!!editId;
+      if(isEdit){const idx=db.findIndex(r=>r.id===editId);if(idx>=0)db[idx]=data}
+      else{db.push(data)}
+      saveDB(db);
+      editId=null;
+      showToast(isEdit?'餐厅已更新':'餐厅已添加');
+      render();
+    });
+  }
+  // Cancel edit
+  const cancelBtn=document.querySelector('[data-action="cancel-edit"]');
+  if(cancelBtn){cancelBtn.addEventListener('click',()=>{editId=null;render()})}
+  // Edit
+  document.querySelectorAll('[data-action="edit-restaurant"]').forEach(btn=>{
+    btn.addEventListener('click',()=>{editId=btn.dataset.id;render();setTimeout(()=>document.getElementById('af_name')?.scrollIntoView({behavior:'smooth'}),100)});
+  });
+  // Delete
+  document.querySelectorAll('[data-action="delete-restaurant"]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      if(!confirm('确定删除这家餐厅吗？此操作不可恢复。'))return;
+      const db=getDB();
+      saveDB(db.filter(r=>r.id!==btn.dataset.id));
+      if(editId===btn.dataset.id)editId=null;
+      showToast('餐厅已删除');
+      render();
+    });
+  });
+  // Reset
+  const resetBtn=document.querySelector('[data-action="reset-db"]');
+  if(resetBtn){resetBtn.addEventListener('click',()=>{if(confirm('确定恢复为默认餐厅数据库和菜系列表吗？自定义数据将丢失。')){localStorage.removeItem(DB_KEY);localStorage.removeItem(CUISINE_KEY);localStorage.removeItem(APP_URL_KEY);localStorage.removeItem(FB_CONFIG_KEY);_fbApp=null;editId=null;showToast('已恢复默认数据库和菜系');render()}})}
+  // Save app URL
+  const saveUrlBtn=document.querySelector('[data-action="save-app-url"]');
+  if(saveUrlBtn){saveUrlBtn.addEventListener('click',()=>{
+    const url=document.getElementById('af_app_url').value.trim();
+    setAppUrl(url);
+    showToast(url?'分享链接已保存':'分享链接已清除');
+    render();
+  })}
+  // Open/close sync panel
+  const openSyncBtn=document.querySelector('[data-action="open-sync"]');
+  if(openSyncBtn)openSyncBtn.addEventListener('click',()=>{document.getElementById('sync-overlay').classList.add('show')});
+  const closeSyncBtn=document.querySelector('[data-action="close-sync"]');
+  if(closeSyncBtn)closeSyncBtn.addEventListener('click',()=>{document.getElementById('sync-overlay').classList.remove('show')});
+  document.addEventListener('click',e=>{if(e.target.id==='sync-overlay')e.target.classList.remove('show')});
+  // Save Firebase config
+  const saveFbBtn=document.querySelector('[data-action="save-fb-config"]');
+  if(saveFbBtn){saveFbBtn.addEventListener('click',()=>{
+    const url=document.getElementById('sf_fb_url').value.trim();
+    const key=document.getElementById('sf_fb_key').value.trim();
+    if(!url||!key){showToast('请填写 Database URL 和 API Key');return}
+    const cfg={databaseURL:url,apiKey:key};
+    localStorage.setItem(FB_CONFIG_KEY,JSON.stringify(cfg));
+    _fbApp=null;
+    fbListen();
+    document.getElementById('sync-overlay').classList.remove('show');
+    showToast('Firebase 已连接，多端实时同步中');
+    render();
+  })}
+  // Disconnect Firebase
+  const disFbBtn=document.querySelector('[data-action="disconnect-fb"]');
+  if(disFbBtn){disFbBtn.addEventListener('click',()=>{
+    if(!confirm('确定断开 Firebase 同步？数据将保留在本地。'))return;
+    localStorage.removeItem(FB_CONFIG_KEY);
+    _fbApp=null;
+    document.getElementById('sync-overlay').classList.remove('show');
+    showToast('已断开同步，使用本地存储');
+    render();
+  })}
+  // Geocode address
+  const geocodeBtn=document.querySelector('[data-action="geocode"]');
+  if(geocodeBtn){geocodeBtn.addEventListener('click',async()=>{
+    const addr=document.getElementById('af_address').value.trim();
+    if(!addr){showToast('请先填写餐厅地址');return}
+    geocodeBtn.textContent='⏳ 正在查询坐标...';geocodeBtn.disabled=true;
+    try{
+      const resp=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr)}&limit=1`,{headers:{'User-Agent':'RestaurantRecommender/1.0'}});
+      const data=await resp.json();
+      if(data.length>0){
+        document.getElementById('af_lat').value=parseFloat(data[0].lat).toFixed(4);
+        document.getElementById('af_lng').value=parseFloat(data[0].lon).toFixed(4);
+        showToast('坐标已自动填入');
+      }else{showToast('未找到该地址的坐标，请手动填写')}
+    }catch(e){showToast('查询失败，请检查网络或手动填写')}
+    geocodeBtn.textContent='📍 根据地址自动获取坐标';geocodeBtn.disabled=false;
+  })}
+  // Add cuisine
+  const addCuisineBtn=document.querySelector('[data-action="add-cuisine"]');
+  if(addCuisineBtn){addCuisineBtn.addEventListener('click',()=>{
+    const input=document.getElementById('af_new_cuisine');
+    const name=input.value.trim();
+    if(!name){showToast('请输入菜系名称');return}
+    if(name==='随便'){showToast('"随便"是系统保留选项');return}
+    const cuisines=getCuisines();
+    if(cuisines.includes(name)){showToast('该菜系已存在');return}
+    cuisines.push(name);
+    saveCuisines(cuisines);
+    input.value='';
+    render();
+    showToast(`菜系「${name}」已添加`);
+  })}
+  // Delete cuisine
+  document.querySelectorAll('[data-action="del-cuisine"]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const name=btn.dataset.name;
+      const cuisines=getCuisines();
+      saveCuisines(cuisines.filter(c=>c!==name));
+      showToast(`菜系「${name}」已删除`);
+      render();
+    });
+  });
+  // File input
+  const fileInput=document.getElementById('af_images_input');
+  if(fileInput){fileInput.addEventListener('change',async()=>{await handleFiles(fileInput.files);fileInput.value='';document.getElementById('img-previews').innerHTML=renderImgPreviews()})}
+  // Remove pending image
+  document.querySelectorAll('[data-action="rm-img"]').forEach(btn=>{
+    btn.addEventListener('click',()=>{removePendingImage(parseInt(btn.dataset.idx));document.getElementById('img-previews').innerHTML=renderImgPreviews()});
+  });
+  // Home share QR
+  const qrHomeBtn=document.querySelector('[data-action="qr-home"]');
+  if(qrHomeBtn){qrHomeBtn.addEventListener('click',()=>{
+    const appUrl=getAppUrl();
+    if(!appUrl){showToast('请先在「管理」页设置小程序访问地址');return}
+    const html=`<div class="lightbox" style="flex-direction:column;gap:16px">
+      <button class="lightbox-close">&times;</button>
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(appUrl)}" style="border-radius:14px;background:#fff;padding:8px" alt="QR">
+      <span style="color:rgba(255,255,255,.7);font-size:13px">扫描二维码打开餐厅推荐器</span>
+    </div>`;
+    const existing=document.querySelector('.lightbox');if(existing)existing.remove();
+    document.body.insertAdjacentHTML('beforeend',html);
+    document.body.style.overflow='hidden';
+  })}
+  // Open lightbox
+  const imgWrap=document.querySelector('[data-action="open-lightbox"]');
+  if(imgWrap){
+    imgWrap.addEventListener('click',()=>{
+      const rec=window._lastRecommendation;
+      if(!rec||!rec.restaurant.images||!rec.restaurant.images.length)return;
+      const imgs=rec.restaurant.images;
+      const visibleImg=imgWrap.querySelector('.result-img[style*="opacity:1"],.result-img:first-child');
+      let curIdx=0;
+      imgWrap.querySelectorAll('.result-img').forEach((img,i)=>{if(parseFloat(img.style.opacity)===1)curIdx=i});
+      showLightbox(imgs,curIdx);
+    });
+  }
+  // Lightbox controls
+  document.addEventListener('click',e=>{
+    const lb=document.querySelector('.lightbox');
+    if(!lb)return;
+    if(e.target.classList.contains('lightbox')||e.target.classList.contains('lightbox-close')){closeLightbox();return}
+    if(e.target.classList.contains('lightbox-prev')){navigateLightbox(-1);return}
+    if(e.target.classList.contains('lightbox-next')){navigateLightbox(1);return}
+    if(e.target.tagName==='IMG'&&e.target.closest('.lightbox')){
+      const rect=e.target.getBoundingClientRect();
+      const x=e.clientX-rect.left;
+      navigateLightbox(x<rect.width/2?-1:1);
+    }
+  });
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLightbox()});
+}
+
+// ── Recommendation Engine ────────────────────
+async function doRecommend(){
+  const db=getDB();
+  // Filter by cuisine
+  let pool=qCuisine==='随便'?db:db.filter(r=>r.cuisine===qCuisine);
+  // Filter by budget
+  pool=pool.filter(r=>r.budget===qBudget);
+  // Filter by party size
+  pool=pool.filter(r=>r.party&&r.party.includes(qPeople));
+  // Sort
+  if(qSort==='nearest'){
+    await getUserLocation();
+    pool=computeDistances(pool);
+    pool.sort((a,b)=>(a.distance||Infinity)-(b.distance||Infinity));
+  }else{
+    const orders=getOrders();
+    pool.sort((a,b)=>(orders[b.id]||0)-(orders[a.id]||0)||b.rating-a.rating);
+  }
+
+  let result,fallback=false;
+  if(pool.length>0){result=pool[0]}
+  else{
+    // Fallback
+    let fb=[...db];
+    if(qCuisine!=='随便')fb=fb.filter(r=>r.cuisine===qCuisine);
+    if(fb.length===0)fb=[...db];
+    fb=fb.filter(r=>r.party&&r.party.includes(qPeople));
+    if(fb.length===0){fb=[...db];if(qCuisine!=='随便')fb=fb.filter(r=>r.cuisine===qCuisine)}
+    if(fb.length===0)fb=[...db];
+    if(qSort==='ranking'){
+      const orders=getOrders();
+      fb.sort((a,b)=>(orders[b.id]||0)-(orders[a.id]||0)||b.rating-a.rating);
+    }else{
+      fb.sort((a,b)=>b.rating-a.rating);
+    }
+    result=fb[0]||db[0];
+    fallback=true;
+  }
+
+  window._lastRecommendation={restaurant:result,partySize:qPeople,cuisine:qCuisine,budget:qBudget,sort:qSort,fallback};
+  currentView='result';
+  render();
+}
+
+// ── Init ─────────────────────────────────────
+fbListen();
+render();
+</script>
+</body>
+</html>
