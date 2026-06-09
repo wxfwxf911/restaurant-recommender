@@ -6,7 +6,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>餐厅推荐</title>
-<script src="https://cdn.jsdelivr.net/npm/leancloud-storage@3.15.0/dist/av-live-query-min.js"></script>
 <style>
 :root {
   --bg:#F2F2F7;
@@ -176,22 +175,6 @@ h1{font-size:28px;font-weight:700;letter-spacing:-.01em;margin-bottom:4px}
 .lightbox-counter{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.7);font-size:14px;z-index:301}
 
 /* Floating Sync Button */
-.fab-sync{position:fixed;bottom:100px;right:16px;width:44px;height:44px;border-radius:50%;border:0;background:var(--card);box-shadow:0 2px 12px rgba(0,0,0,.15);cursor:pointer;z-index:150;display:flex;align-items:center;justify-content:center;font-size:20px;transition:all .25s}
-.fab-sync.connected{background:#E8F5E9}
-.fab-dot{position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;background:#C0C0C0;border:2px solid var(--card)}
-.fab-sync.connected .fab-dot{background:var(--green)}
-/* Sync Panel */
-.sync-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:250;display:none;animation:fadeIn .2s ease}
-.sync-overlay.show{display:block}
-.sync-panel{position:fixed;bottom:0;left:50%;transform:translateX(-50%)translateY(100%);width:100%;max-width:480px;max-height:85vh;overflow-y:auto;background:var(--card);border-radius:20px 20px 0 0;z-index:251;padding:28px 20px 40px;transition:transform .3s ease;box-shadow:0 -4px 20px rgba(0,0,0,.12)}
-.sync-overlay.show .sync-panel{transform:translateX(-50%)translateY(0)}
-.sync-panel h2{font-size:20px;font-weight:700;margin-bottom:6px}
-.sync-panel .step{display:flex;gap:10px;margin:14px 0;align-items:flex-start}
-.sync-panel .step-num{width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.sync-panel .step p{font-size:14px;line-height:1.5;flex:1}
-.sync-panel code{display:block;background:var(--bg);padding:10px 14px;border-radius:8px;font-size:12px;word-break:break-all;margin-top:6px;white-space:pre-wrap;max-height:120px;overflow-y:auto}
-.sync-panel .btn-close{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;border:0;background:var(--sep);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
-
 /* Toast */
 .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#1C1C1E;color:#fff;padding:12px 24px;border-radius:24px;font-size:14px;font-weight:500;z-index:200;opacity:0;transition:opacity .3s;pointer-events:none}
 .toast.show{opacity:1}
@@ -209,11 +192,11 @@ const CUISINE_KEY = 'cuisine_list';
 const DEFAULT_CUISINES = ['中餐','火锅','日料','西餐'];
 const CUISINE_EMOJI = {中餐:'🥢',火锅:'🍲',日料:'🍣',西餐:'🍝'};
 function loadCuisines(){try{const d=localStorage.getItem(CUISINE_KEY);return d?JSON.parse(d):null}catch(e){return null}}
-function saveCuisines(data){localStorage.setItem(CUISINE_KEY,JSON.stringify(data));lcSet('cuisines',data)}
+function saveCuisines(data){localStorage.setItem(CUISINE_KEY,JSON.stringify(data))}
 function getCuisines(){let c=loadCuisines();if(!c){c=[...DEFAULT_CUISINES];saveCuisines(c)}return c}
 const APP_URL_KEY='app_share_url';
 function getAppUrl(){return localStorage.getItem(APP_URL_KEY)||''}
-function setAppUrl(url){localStorage.setItem(APP_URL_KEY,url);lcSet('appUrl',url)}
+function setAppUrl(url){localStorage.setItem(APP_URL_KEY,url)}
 
 const DEFAULT_RESTAURANTS = [
   {id:'r1',name:'鼎泰丰',cuisine:'中餐',budget:'50-100',party:['1-2','3-5'],reason:'小笼包界的天花板，米其林一星品质，服务细致到帮客人剥虾壳，商务宴请和约会从未失手。',mustTry:'蟹粉小笼包、虾仁蛋炒饭、原盅鸡汤',avgPrice:80,rating:4.7,phone:'021-63865778',address:'上海市黄浦区淮海中路999号环贸广场L4',lat:31.218,lng:121.467,images:[]},
@@ -235,51 +218,12 @@ const DEFAULT_RESTAURANTS = [
 ];
 
 function loadDB(){try{const d=localStorage.getItem(DB_KEY);return d?JSON.parse(d):null}catch(e){return null}}
-// ── LeanCloud Sync ────────────────────────────
-const LC_CONFIG_KEY='leancloud_config';
-let _lcLiveQuery=null;
-function getLcConfig(){try{return JSON.parse(localStorage.getItem(LC_CONFIG_KEY))||null}catch(e){return null}}
-function lcInit(){
-  if(window._lcInited)return true;
-  const cfg=getLcConfig();
-  if(!cfg||!cfg.appId||!cfg.appKey||typeof AV==='undefined')return false;
-  try{
-    AV.init({appId:cfg.appId,appKey:cfg.appKey,serverURL:cfg.serverURL||('https://'+cfg.appId+'.lc-cn-n1-shared.com')});
-    window._lcInited=true;return true;
-  }catch(e){return false}
-}
-function lcSet(key,value){
-  if(!lcInit())return;
-  const SyncData=AV.Object.extend('SyncData');
-  new AV.Query('SyncData').equalTo('key',key).first().then(obj=>{
-    const clean=JSON.parse(JSON.stringify(value));
-    if(obj){obj.set('value',clean);return obj.save()}
-    else{return new SyncData({key:key,value:clean}).save()}
-  }).catch(()=>{});
-}
-function applySync(key,value){
-  if(!value)return;
-  switch(key){
-    case'restaurants':localStorage.setItem(DB_KEY,JSON.stringify(value));if(currentView!=='recommend'||step===0)render();break;
-    case'orders':localStorage.setItem(ORDERS_KEY,JSON.stringify(value));break;
-    case'cuisines':localStorage.setItem(CUISINE_KEY,JSON.stringify(value));break;
-    case'appUrl':if(value!=null)localStorage.setItem(APP_URL_KEY,value);break;
-  }
-}
-function lcListen(){
-  if(!lcInit())return;
-  if(_lcLiveQuery){_lcLiveQuery.unsubscribe().catch(()=>{});_lcLiveQuery=null}
-  new AV.Query('SyncData').subscribe().then(lq=>{
-    _lcLiveQuery=lq;
-    lq.on('create',obj=>{const k=obj.get('key'),v=obj.get('value');if(k&&v!=null)applySync(k,v)});
-    lq.on('update',(obj,keys)=>{if(keys&&keys.includes('value')){const k=obj.get('key'),v=obj.get('value');if(k&&v!=null)applySync(k,v)}});
-  }).catch(()=>{});
-}
+// ── Data Persistence ──────────────────────────
 
-function saveDB(data){localStorage.setItem(DB_KEY,JSON.stringify(data));lcSet('restaurants',data)}
+function saveDB(data){localStorage.setItem(DB_KEY,JSON.stringify(data))}
 function getDB(){let db=loadDB();if(!db){db=JSON.parse(JSON.stringify(DEFAULT_RESTAURANTS));saveDB(db)}return db}
 function loadOrders(){try{const d=localStorage.getItem(ORDERS_KEY);return d?JSON.parse(d):{}}catch(e){return{}}}
-function saveOrders(data){localStorage.setItem(ORDERS_KEY,JSON.stringify(data));lcSet('orders',data)}
+function saveOrders(data){localStorage.setItem(ORDERS_KEY,JSON.stringify(data))}
 function getOrders(){return loadOrders()}
 
 // ── Geolocation ──────────────────────────────
@@ -313,13 +257,20 @@ let currentView='recommend';
 let step=0, qPeople='', qCuisine='', qBudget='', qSort='';
 let editId=null;
 let pendingImages=[];
+function resetState(){step=0;qPeople='';qCuisine='';qBudget='';qSort='';editId=null}
+function sortByRanking(arr){
+  const orders=getOrders();
+  arr.sort((a,b)=>(orders[b.id]||0)-(orders[a.id]||0)||b.rating-a.rating);
+}
 
 // ── Image Processing ──────────────────────────
 function processImageFile(file){
-  return new Promise(resolve=>{
+  return new Promise((resolve,reject)=>{
     const reader=new FileReader();
+    reader.onerror=()=>reject(new Error('读取文件失败'));
     reader.onload=()=>{
       const img=new Image();
+      img.onerror=()=>reject(new Error('图片解码失败'));
       img.onload=()=>{
         const maxW=400;
         let w=img.width,h=img.height;
@@ -380,7 +331,7 @@ const toast=document.getElementById('toast');
 function showToast(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2000)}
 
 function render(){
-  let html=renderNav()+renderFab();
+  let html=renderNav();
   if(currentView==='recommend')html+=renderRecommend();
   else if(currentView==='loading')html+=renderLoading();
   else if(currentView==='result')html+=renderResult();
@@ -388,46 +339,6 @@ function render(){
   else if(currentView==='admin')html+=renderAdmin();
   app.innerHTML=html;
   bindEvents();
-}
-
-function renderFab(){
-  const lcCfg=getLcConfig();
-  const connected=!!(lcCfg&&lcCfg.appId&&window._lcInited);
-  let h=`<button class="fab-sync${connected?' connected':''}" data-action="open-sync" title="${connected?'已连接 LeanCloud':'未配置同步'}">
-    ☁️<span class="fab-dot"></span>
-  </button>`;
-  h+=`<div class="sync-overlay" id="sync-overlay">
-    <div class="sync-panel">
-      <button class="btn-close" data-action="close-sync">&times;</button>
-      <h2>☁️ 多端实时同步</h2>
-      <p style="font-size:13px;color:var(--sub);margin-bottom:12px">${connected?'<span style="color:var(--green)">✅ 已连接</span> — 手机和电脑数据实时同步中':'配置 LeanCloud 后，手机和电脑数据实时同步'}</p>
-      <div class="step"><div class="step-num">1</div><div><p style="font-weight:600">填写 LeanCloud 配置</p></div></div>
-      <label style="display:block;font-size:13px;font-weight:600;color:var(--sub);margin:8px 0 4px">App ID</label>
-      <input id="sf_lc_appid" value="${lcCfg&&lcCfg.appId?lcCfg.appId:''}" placeholder="输入 App ID" style="width:100%;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit">
-      <label style="display:block;font-size:13px;font-weight:600;color:var(--sub);margin:8px 0 4px">App Key</label>
-      <input id="sf_lc_appkey" value="${lcCfg&&lcCfg.appKey?lcCfg.appKey:''}" placeholder="输入 App Key" style="width:100%;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit">
-      <label style="display:block;font-size:13px;font-weight:600;color:var(--sub);margin:8px 0 4px">Server URL（可选，默认自动拼接）</label>
-      <input id="sf_lc_server" value="${lcCfg&&lcCfg.serverURL?lcCfg.serverURL:''}" placeholder="https://yourapp.lc-cn-n1-shared.com" style="width:100%;padding:10px 14px;border:2px solid var(--sep);border-radius:10px;font-size:15px;font-family:inherit">
-      <button class="btn-submit" data-action="save-lc-config" style="margin-top:12px">${connected?'重新连接':'保存并连接'}</button>
-      ${connected?`<button class="btn-share" data-action="disconnect-lc" style="margin-top:8px;color:var(--red);border-color:var(--red)">断开同步</button>`:''}
-      <div class="step" style="margin-top:20px"><div class="step-num">2</div><div><p style="font-weight:600">获取 LeanCloud 配置（点击展开）</p></div></div>
-      <details style="font-size:12px;color:var(--sub);line-height:1.7;margin-left:34px">
-        <summary style="cursor:pointer;font-weight:600;color:var(--accent)">如何获取 App ID 和 App Key？</summary>
-        <p style="margin-top:6px">打开 <a href="https://console.leancloud.cn" target="_blank">console.leancloud.cn</a>，注册并登录</p>
-        <p>创建应用 → 选择<b>开发版</b>（免费）→ 进入应用</p>
-        <p>左侧 <b>设置 → 应用凭证</b> → 复制 <b>App ID</b> 和 <b>App Key</b></p>
-        <p style="margin-top:4px;color:var(--orange)">⚠️ 注意：使用的是国内版 console.leancloud.cn</p>
-      </details>
-      <div class="step" style="margin-top:16px"><div class="step-num">3</div><div><p style="font-weight:600">创建数据表</p></div></div>
-      <details style="font-size:12px;color:var(--sub);line-height:1.7;margin-left:34px">
-        <summary style="cursor:pointer;font-weight:600;color:var(--accent)">首次使用需要在控制台创建</summary>
-        <p style="margin-top:6px">LeanCloud 控制台 → 存储 → 结构化数据 → 创建 Class</p>
-        <p>Class 名称填 <b style="color:var(--accent)">SyncData</b>，权限选<b>无限制</b></p>
-        <p>创建后即可使用实时同步功能</p>
-      </details>
-    </div>
-  </div>`;
-  return h;
 }
 
 function renderNav(){
@@ -664,7 +575,7 @@ function renderAdmin(){
 function bindEvents(){
   // Nav
   document.querySelectorAll('[data-nav]').forEach(btn=>{
-    btn.addEventListener('click',()=>{currentView=btn.dataset.nav;step=0;qPeople='';qCuisine='';qBudget='';qSort='';editId=null;render()});
+    btn.addEventListener('click',()=>{if(currentView===btn.dataset.nav)return;currentView=btn.dataset.nav;resetState();render()});
   });
   // Options
   document.querySelectorAll('[data-step]').forEach(btn=>{
@@ -680,7 +591,7 @@ function bindEvents(){
   });
   // Back / Restart
   const backBtn=document.querySelector('[data-action="restart"]');
-  if(backBtn)backBtn.addEventListener('click',()=>{step=0;qPeople='';qCuisine='';qBudget='';qSort='';currentView='recommend';render()});
+  if(backBtn)backBtn.addEventListener('click',()=>{resetState();currentView='recommend';render()});
   // Contact / Order
   const orderBtn=document.querySelector('[data-action="order"]');
   if(orderBtn){
@@ -757,47 +668,13 @@ function bindEvents(){
   });
   // Reset
   const resetBtn=document.querySelector('[data-action="reset-db"]');
-  if(resetBtn){resetBtn.addEventListener('click',()=>{if(confirm('确定恢复为默认餐厅数据库和菜系列表吗？自定义数据将丢失。')){localStorage.removeItem(DB_KEY);localStorage.removeItem(CUISINE_KEY);localStorage.removeItem(APP_URL_KEY);localStorage.removeItem(LC_CONFIG_KEY);window._lcInited=false;_lcLiveQuery=null;editId=null;showToast('已恢复默认数据库和菜系');render()}})}
+  if(resetBtn){resetBtn.addEventListener('click',()=>{if(confirm('确定恢复为默认餐厅数据库和菜系列表吗？自定义数据将丢失。')){localStorage.removeItem(DB_KEY);localStorage.removeItem(CUISINE_KEY);localStorage.removeItem(APP_URL_KEY);editId=null;showToast('已恢复默认数据库和菜系');render()}})}
   // Save app URL
   const saveUrlBtn=document.querySelector('[data-action="save-app-url"]');
   if(saveUrlBtn){saveUrlBtn.addEventListener('click',()=>{
     const url=document.getElementById('af_app_url').value.trim();
     setAppUrl(url);
     showToast(url?'分享链接已保存':'分享链接已清除');
-    render();
-  })}
-  // Open/close sync panel
-  const openSyncBtn=document.querySelector('[data-action="open-sync"]');
-  if(openSyncBtn)openSyncBtn.addEventListener('click',()=>{document.getElementById('sync-overlay').classList.add('show')});
-  const closeSyncBtn=document.querySelector('[data-action="close-sync"]');
-  if(closeSyncBtn)closeSyncBtn.addEventListener('click',()=>{document.getElementById('sync-overlay').classList.remove('show')});
-  document.addEventListener('click',e=>{if(e.target.id==='sync-overlay')e.target.classList.remove('show')});
-  // Save LeanCloud config
-  const saveLcBtn=document.querySelector('[data-action="save-lc-config"]');
-  if(saveLcBtn){saveLcBtn.addEventListener('click',()=>{
-    const appId=document.getElementById('sf_lc_appid').value.trim();
-    const appKey=document.getElementById('sf_lc_appkey').value.trim();
-    const serverURL=document.getElementById('sf_lc_server').value.trim();
-    if(!appId||!appKey){showToast('请填写 App ID 和 App Key');return}
-    const cfg={appId:appId,appKey:appKey};
-    if(serverURL)cfg.serverURL=serverURL;
-    localStorage.setItem(LC_CONFIG_KEY,JSON.stringify(cfg));
-    window._lcInited=false;
-    if(_lcLiveQuery){_lcLiveQuery.unsubscribe().catch(()=>{});_lcLiveQuery=null}
-    lcListen();
-    document.getElementById('sync-overlay').classList.remove('show');
-    showToast('LeanCloud 已连接，多端实时同步中');
-    render();
-  })}
-  // Disconnect LeanCloud
-  const disLcBtn=document.querySelector('[data-action="disconnect-lc"]');
-  if(disLcBtn){disLcBtn.addEventListener('click',()=>{
-    if(!confirm('确定断开 LeanCloud 同步？数据将保留在本地。'))return;
-    localStorage.removeItem(LC_CONFIG_KEY);
-    window._lcInited=false;
-    if(_lcLiveQuery){_lcLiveQuery.unsubscribe().catch(()=>{});_lcLiveQuery=null}
-    document.getElementById('sync-overlay').classList.remove('show');
-    showToast('已断开同步，使用本地存储');
     render();
   })}
   // Geocode address
@@ -876,20 +753,7 @@ function bindEvents(){
       showLightbox(imgs,curIdx);
     });
   }
-  // Lightbox controls
-  document.addEventListener('click',e=>{
-    const lb=document.querySelector('.lightbox');
-    if(!lb)return;
-    if(e.target.classList.contains('lightbox')||e.target.classList.contains('lightbox-close')){closeLightbox();return}
-    if(e.target.classList.contains('lightbox-prev')){navigateLightbox(-1);return}
-    if(e.target.classList.contains('lightbox-next')){navigateLightbox(1);return}
-    if(e.target.tagName==='IMG'&&e.target.closest('.lightbox')){
-      const rect=e.target.getBoundingClientRect();
-      const x=e.clientX-rect.left;
-      navigateLightbox(x<rect.width/2?-1:1);
-    }
-  });
-  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLightbox()});
+  // Lightbox controls are set up once in initLightboxListeners()
 }
 
 // ── Recommendation Engine ────────────────────
@@ -907,8 +771,7 @@ async function doRecommend(){
     pool=computeDistances(pool);
     pool.sort((a,b)=>(a.distance||Infinity)-(b.distance||Infinity));
   }else{
-    const orders=getOrders();
-    pool.sort((a,b)=>(orders[b.id]||0)-(orders[a.id]||0)||b.rating-a.rating);
+    sortByRanking(pool);
   }
 
   let result,fallback=false;
@@ -922,8 +785,7 @@ async function doRecommend(){
     if(fb.length===0){fb=[...db];if(qCuisine!=='随便')fb=fb.filter(r=>r.cuisine===qCuisine)}
     if(fb.length===0)fb=[...db];
     if(qSort==='ranking'){
-      const orders=getOrders();
-      fb.sort((a,b)=>(orders[b.id]||0)-(orders[a.id]||0)||b.rating-a.rating);
+      sortByRanking(fb);
     }else{
       fb.sort((a,b)=>b.rating-a.rating);
     }
@@ -937,7 +799,22 @@ async function doRecommend(){
 }
 
 // ── Init ─────────────────────────────────────
-lcListen();
+function initLightboxListeners(){
+  document.addEventListener('click',e=>{
+    const lb=document.querySelector('.lightbox');
+    if(!lb)return;
+    if(e.target.classList.contains('lightbox')||e.target.classList.contains('lightbox-close')){closeLightbox();return}
+    if(e.target.classList.contains('lightbox-prev')){navigateLightbox(-1);return}
+    if(e.target.classList.contains('lightbox-next')){navigateLightbox(1);return}
+    if(e.target.tagName==='IMG'&&e.target.closest('.lightbox')){
+      const rect=e.target.getBoundingClientRect();
+      const x=e.clientX-rect.left;
+      navigateLightbox(x<rect.width/2?-1:1);
+    }
+  });
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLightbox()});
+}
+initLightboxListeners();
 render();
 </script>
 </body>
